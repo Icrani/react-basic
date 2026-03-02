@@ -1,5 +1,11 @@
-import {createContext, useContext, useRef, useState} from "react";
+import React, {createContext, useContext, useEffect, useRef, useState} from "react";
 import './css/index.css'
+import * as Redux from 'redux'
+import axios from "axios";
+import {useSelector, useDispatch} from "react-redux";
+import {decrement, increment, addToNum, decNum, reset} from "./store/modules/counterStore";
+
+
 // import _ from 'lodash' //引入lodash
 // import classNames from "classnames"; //引入classNames
 // npm i uuid //安装uuid
@@ -8,6 +14,7 @@ import './css/index.css'
 //uuidV4()的返回值就是一个随机的ID
 
 import * as dayjs from 'dayjs'
+import {fetchChannelList} from "./store/modules/channelStore";
 
 
 //父传子
@@ -16,7 +23,7 @@ import * as dayjs from 'dayjs'
 const name = 'this is a app name'
 
 function Son(props) {
-    console.log('props', props)
+    // console.log('props', props)
     return (<div>
         this is son: {props.name}
     </div>)
@@ -24,12 +31,15 @@ function Son(props) {
 
 //子组件中，props.children，可以直接获取子组件标签中的内容
 const Son1 = (props) => {
-    return <div>
+    return (
+        <div>
             <span>
                 this is a Son1:{props.children}
             </span>
-    </div>
+        </div>
+    )
 }
+
 
 //子传父
 function Son2({onGetMessage}) {
@@ -49,11 +59,11 @@ function A({onGetAName}) {
         <button onClick={() => {
             onGetAName(AName)
         }}>send</button>
-    </div>);
+    </div>)
 }
 
 function B(props) {
-    console.log('B', props)
+    // console.log('B', props)
     return (<div>
         this is B component: {props.name}
 
@@ -80,7 +90,71 @@ function D() {
 }
 
 //useEffect
-const URL='http://geek.itheima.net/v1_0/channels'
+
+
+const URL = 'http://geek.itheima.net/v1_0/channels'
+
+
+//自定义Hooks函数
+function useToggle() {
+    //可复用的逻辑代码
+    //自定义Hooks
+    const [valueFlag1, setValueFlag1] = useState(true)
+
+    const toggle = () => {
+        setValueFlag1(!valueFlag1)
+    }
+
+    //哪些状态和回调函数需要再其他组件中使用，就return
+    return {
+        valueFlag1,
+        toggle
+    }
+
+}
+
+/*  如何自定义hook函数
+*   1.声明一个以use打头的函数
+*   2.函数内部封装可复用的逻辑（只要是可复用的逻辑代码）
+*   3.把组件中用到的状态和回调函数，return出去（以对象或者数组的方式）
+*   4.在组件中，执行自定义Hooks函数，并解构出状态和回调函数进行使用
+* */
+/*  规则
+*   1.只能在组件中或者其他自定义hook函数中调用
+*   2.只能在组件的顶层调用，不能嵌套在if、for、while、switch...等其他函数中使用
+*
+* */
+
+
+//尝试封装一个自定义Hooks
+function useGetList() {
+
+    // useEffect
+    //创建一个状态数据
+    const [list1, setList1] = useState([])
+
+    useEffect(() => {
+        //额外的操作 获取频道列表
+        // const res =await fetch(URL)
+        async function getList() {
+            const res = await axios.get(URL)
+            console.log('res', res)
+            setList1(res.data.data.channels)
+        }
+
+        getList().catch(err => {
+            console.log(err)
+        })
+
+
+    }, [])
+
+    return {
+        list1,
+        setList1
+    }
+
+}
 
 
 function App() {
@@ -190,7 +264,103 @@ function App() {
     }
 
     //跨层组件通信
-    const AppMessage ='this is a AppMessage'
+    const AppMessage = 'this is a AppMessage'
+
+
+    //尝试自己将请求接口封装到一个hooks中
+    const {list1, setList1} = useGetList() //我这里用不上setList1这个方法
+
+
+    // useEffect---清除副作用
+    const [show, setShow] = useState(false)
+
+    function Son3() {
+        useEffect(() => {
+            //由于在 188行中也定义了 setInterval，导致计时器混乱，所以会出现1秒运行多次的计时器，写了清楚副作用的代码后就可以正常执行了
+            //console.log('message', message11)
+            const timer3 = setInterval(() => {
+                console.log('定时器执行了')
+            }, 1000)
+
+            //在第一个函数参数中，进行return ()=>{}，即可清除副作用
+            //清除副作用逻辑（组件卸载时执行）
+            return () => {
+
+                clearInterval(timer3)
+            }
+
+        }, [])
+        return (<div>
+            this is a Son3
+        </div>)
+    }
+
+    //自定义Hooks
+    const {valueFlag1, toggle} = useToggle()
+
+
+    //自定义一个item作为列表的
+    function Item({item}) {
+        return (
+            <li key={item.id}>{item.name}</li>
+        )
+    }
+
+    //实现一个简单的reducer （原生的redux）
+
+    //1.定义一个reducer函数
+    /*作用：根据不同的action对象，返回不同的新的state
+    * state: 管理的数据初始状态
+    * action: 对象type标记当前想要做什么样的修改
+    * */
+    function reducer(state = {count: 0}, action) {
+        //数据不可变：基于原始的状态生成一个新的状态
+        if (action.type === 'INCREMENT') {
+            return {count: state.count + 1}
+        }
+        if (action.type === 'DECREMENT') {
+            return {count: state.count - 1}
+        }
+        return state
+    }
+
+    //2.使用reducer函数生成store实例
+    const store = Redux.createStore(reducer)
+
+    //3.使用store实例的subscribe方法，监听store状态的修改
+    //回调函数可以在每次state修改时自动执行
+    store.subscribe(() => {
+        console.log('state发生变化了')
+        document.getElementById('countNum').innerText = store.getState().count
+    })
+
+    //4.通过store实例的dispatch函数提交action更改状态
+    useEffect(() => {
+        const inBtn = document.getElementById('increment')
+        inBtn.addEventListener('click', () => {
+            store.dispatch({type: 'INCREMENT'})
+        })
+
+        const deBtn = document.getElementById('decrement')
+        deBtn.addEventListener('click', () => {
+            store.dispatch({type: 'DECREMENT'})
+        })
+    }, []);
+
+    //5.通过store实例的getState方法获取最新状态更新到视图中
+
+
+    //RTX
+    const {count_RTX} = useSelector((state) => state.counter)
+    const dispatch = useDispatch()
+
+
+    //RTX---异步
+    const {channelList} = useSelector((state) => state.channel)
+    //使用useEffect出发异步请求
+    useEffect(() => {
+        dispatch(fetchChannelList())
+    },[dispatch])
 
 
     return (<div className="App">
@@ -365,10 +535,80 @@ function App() {
 
         <hr/>
         {'useEffect'}
+        <div>
+            this is app
+            <ul>
+                {
+                    list1.map(item => (<Item item={item} key={item.id}/>))
+                }
+            </ul>
+        </div>
+
+        {/*
+            1.没有依赖项 初始+组件重新渲染时
+            2.[] 空数组 仅初始化
+            3.有依赖项 仅初始+依赖项变化时
+        */}
+
+        <br/>
+        <br/>
+        {'useEffect----清除副作用'}
+
+        <div>
+            {show && <Son3/>}
+            <button onClick={() => setShow(false)}>卸载Son3组件</button>
+        </div>
+
+        <hr/>
+
+        {'自定义Hooks函数'}
+
+        <div>
+            {valueFlag1 && <div>this is div</div>}
+            <button onClick={toggle}>toggle</button>
+        </div>
+
+
+        {'实现一个简单的reducer'}
+
+        <div>
+            <button id={'decrement'}> -</button>
+            <div id={"countNum"}>0</div>
+            <button id={'increment'}> +</button>
+        </div>
+
+        <hr/>
+
+        {'react+RTS'}
+
+        <div>
+            <p>{count_RTX}</p>
+            <button onClick={() => dispatch(decrement())}> -</button>
+            <button onClick={() => dispatch(increment())}> +</button>
+        </div>
+
+        <br/>
+
+        {'react+RTX---传递参数'}
+        <button onClick={() => dispatch(addToNum(10))}>+10</button>
+        <button onClick={() => dispatch(addToNum(20))}>+20</button>
+        <button onClick={() => dispatch(decNum(20))}>-20</button>
+        <button onClick={() => dispatch(reset())}>归零</button>
+
+
+        <hr/>
+
+        {'RTX---异步函数'}
+        <ul>
+            {
+                channelList.map(item => <li key={item.id}>{item.name}</li>)
+            }
+        </ul>
 
 
 
     </div>);
+
 }
 
 export default App;
